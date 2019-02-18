@@ -337,7 +337,10 @@ function squid_write_rcfile() {
 	$rc['file'] = 'squid.sh';
 	$rc['start'] = <<< EOD
 #/sbin/sysctl net.inet.ip.portrange.reservedhigh=0
-if [ -z "`/bin/ps auxw | /usr/bin/grep "[s]quid " | /usr/bin/awk '{print $2}'`" ]; then
+SQUID_ENABLED=$(/usr/local/sbin/read_xml_tag.sh string installedpackages/squid/config/enable_squid)
+if [ "\${SQUID_ENABLED}" != "on" ]; then
+	exit 0
+elif [ -z "`/bin/ps auxw | /usr/bin/grep "[s]quid " | /usr/bin/awk '{print $2}'`" ]; then
 	{$squid_base}/sbin/squid -f {$squid_conffile_var}
 fi
 
@@ -940,7 +943,7 @@ function squid_validate_cache($post, &$input_errors) {
 	}
 
 	if ($post['donotcache'] != "") {
-		foreach (split("\n", $post['donotcache']) as $host) {
+		foreach (explode("\n", $post['donotcache']) as $host) {
 			$host = trim($host);
 			// Allow matching all subdomains, like .example.com
 			if (strpos($host, '.') === 0) {
@@ -1291,9 +1294,18 @@ function squid_resync_general() {
 	 * This avoids periods when Squid is unresponsive due to digest generation.
 	 */
 	$digest_generation = "off";
+	if (!is_array($config['installedpackages'])) {
+		$config['installedpackages'] = array();
+	}
+
+	if (!is_array($config['installedpackages']['squidremote'])) {
+		$config['installedpackages']['squidremote'] = array();
+	}
+
 	if (!is_array($config['installedpackages']['squidremote']['config'])) {
 		$config['installedpackages']['squidremote']['config'] = array();
 	}
+
 	foreach ($config['installedpackages']['squidremote']['config'] as $settings) {
 		if ($settings['enable'] == 'on' && $settings['hierarchy'] == 'sibling') {
 			$digest_generation = "on";
@@ -1481,6 +1493,14 @@ EOD;
 /* Proxy Server: Remote Proxy Settings configuration handler */
 function squid_resync_upstream() {
 	global $config;
+
+	if (!is_array($config['installedpackages'])) {
+		$config['installedpackages'] = array();
+	}
+
+	if (!is_array($config['installedpackages']['squidremote'])) {
+		$config['installedpackages']['squidremote'] = array();
+	}
 
 	if (!is_array($config['installedpackages']['squidremote']['config'])) {
 		$config['installedpackages']['squidremote']['config'] = array();
@@ -1752,6 +1772,7 @@ function squid_resync_auth() {
 	global $config, $valid_acls;
 	$write_config = 0;
 	if (!is_array($config['installedpackages']['squidauth']['config'])) {
+		init_config_arr(array('installedpackages', 'squidauth', 'config'));
 		$config['installedpackages']['squidauth']['config'][] = array('auth_method' => "none");
 		$write_config++;
 	}
@@ -2441,9 +2462,11 @@ function squid_do_xmlrpc_sync($sync_to_ip, $port, $protocol, $username, $passwor
 function squid_list_ssl_ca() {
 	global $config;
 	$prvca_list = array();
-	foreach ($config['ca'] as $ca) {
-		if (!empty($ca['prv'])) {
-			$prvca_list[] = $ca;
+	if (isset($config['ca']) && is_array($config['ca'])) {
+		foreach ($config['ca'] as $ca) {
+			if (!empty($ca['prv'])) {
+				$prvca_list[] = $ca;
+			}
 		}
 	}
 	return $prvca_list;
